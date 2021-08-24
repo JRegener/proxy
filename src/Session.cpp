@@ -109,7 +109,7 @@ namespace proxy {
 		}
 
 		if (header->chunked ()) {
-			std::cout << "chunked" << std::endl;
+			std::cout << "chunked response" << std::endl;
 			//header->on_chunk_header (
 			//	std::bind (&ClientSession::chunkHeaderCallback,
 			//			   this,
@@ -128,7 +128,7 @@ namespace proxy {
 			//startSendChunk (header);
 		}
 		else {
-			std::cout << "normal" << std::endl;
+			std::cout << "normal response" << std::endl;
 			Ref<ResponseParser> response = createRef<ResponseParser> (std::move (*header));
 			response->body_limit (std::numeric_limits<std::uint64_t>::max ());
 
@@ -183,6 +183,7 @@ namespace proxy {
 										 std::placeholders::_1)
 								 ));
 	}
+
 	void ClientSession::handleRequest (Ref<RequestParser> request, boost::system::error_code ec) {
 		LOG_FUNCTION_DEBUG;
 
@@ -235,7 +236,7 @@ namespace proxy {
 			// TODO: TMP
 			remoteSessionStorage.add (sessionKey, session);
 		}
-		session->setResponseHandler (std::bind (&ClientSession::handleRemoteResponse,
+		session->setResponseHandler (std::bind (&ClientSession::forwardRemoteResponse,
 												shared_from_this (),
 												std::placeholders::_1,
 												std::placeholders::_2,
@@ -358,7 +359,7 @@ namespace proxy {
 
 	}
 #endif
-	void ClientSession::handleRemoteResponse (Ref<ResponseParser> response,
+	void ClientSession::forwardRemoteResponse (Ref<ResponseParser> response,
 											  boost::system::error_code ec,
 											  std::size_t bytes_tranferred) {
 		LOG_FUNCTION_DEBUG;
@@ -391,6 +392,34 @@ namespace proxy {
 			logBoostError (ec);
 			return;
 		}
+	}
 
+	void ClientSession::forwardChunkHeader (Ref<ResponseHeader> header) {
+		beast::http::response_serializer <beast::http::empty_body> serializer (*header);
+
+		beast::http::async_write_header (socket, serializer,
+										 asio::bind_executor (
+											 strand,
+											 [](boost::system::error_code ec, size_t bytes_transferred) {
+												 if (ec) {
+													 // TODO: stop sending chunks?
+													 return;
+												 }
+											 }
+										 ));
+	}
+
+	template<typename T>
+	void ClientSession::forwardChunkBody (const T & chunk) {
+		asio::async_write (socket,
+						   chunk,
+						   asio::bind_executor (
+							   strand,
+							   [](boost::system::error_code ec, size_t bytes_transferred) {
+								   if (ec) {
+									   // TODO: stop sending chunks?
+									   return;
+								   }
+							   }));
 	}
 }

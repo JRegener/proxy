@@ -35,6 +35,9 @@ namespace proxy {
 	using Request = beast::http::request<beast::http::string_body>;
 	using Response = beast::http::response<beast::http::string_body>;
 
+	using RequestHeader = beast::http::request<beast::http::empty_body>;
+	using ResponseHeader = beast::http::response<beast::http::empty_body>;
+
 	using RequestParser = beast::http::request_parser<beast::http::string_body>;
 	using ResponseParser = beast::http::response_parser<beast::http::string_body>;
 
@@ -118,7 +121,6 @@ namespace proxy {
 
 	public:
 		void sendAsyncRequest (Ref<Request> request);
-
 		void setResponseHandler (std::function<void (Ref<ResponseParser>,
 													 boost::system::error_code,
 													 std::size_t)> responseHandler) {
@@ -127,25 +129,13 @@ namespace proxy {
 		}
 
 	private:
-		void handleResolve (Ref<Request> request,
-							boost::system::error_code ec, tcp::resolver::results_type result);
-
-		// send request to remote server
-		void handleConnect (Ref<Request> request,
-							const boost::system::error_code& ec);
-
-
-		void readHeader (Ref<Request> request,
-						 boost::system::error_code ec,
-						 std::size_t bytes_tranferred);
-
-		void handleHeaderResponse (Ref<ResponseHeaderParser> header,
-								   boost::system::error_code ec);
+		void handleResolve (Ref<Request> request, boost::system::error_code ec, tcp::resolver::results_type result);
+		void handleConnect (Ref<Request> request, const boost::system::error_code& ec);
+		void readHeader (Ref<Request> request, boost::system::error_code ec, std::size_t bytes_tranferred);
+		void handleHeaderResponse (Ref<ResponseHeaderParser> header, boost::system::error_code ec);
 
 	private:
-		std::function<void (Ref<ResponseParser>,
-							boost::system::error_code,
-							std::size_t)> responseHandler;
+		std::function<void (Ref<ResponseParser>, boost::system::error_code, std::size_t)> responseHandler;
 
 		std::string address;
 		uint16_t port;
@@ -169,12 +159,8 @@ namespace proxy {
 
 		~ClientSession () = default;
 
-
 	public:
-
-		tcp::socket& getSocket () {
-			return socket;
-		}
+		tcp::socket& getSocket () { return socket; }
 
 		void start () {
 			LOG_FUNCTION_DEBUG;
@@ -182,134 +168,16 @@ namespace proxy {
 		}
 
 	private:
-
 		std::pair<std::string, uint16_t> extractAddressPort (beast::string_view host);
 
-	private:
 		void acceptRequest ();
 		void handleRequest (Ref<RequestParser> request, boost::system::error_code ec);
+		void forwardRemoteResponse (Ref<ResponseParser> response, boost::system::error_code ec, std::size_t bytes_tranferred);
+		void handleWrite (Ref<Response> response, boost::system::error_code ec, std::size_t bytes_transferred);
 
-#if 0
-		Ref<beast::http::response_serializer<beast::http::empty_body>> serializer;
-		void startSendChunk (Ref<HttpResponseHeaderParser> header) {
-			resp = createRef<HttpResponseHeader> (header->get ());
-			serializer = createRef<beast::http::response_serializer<beast::http::empty_body>> (*resp);
-
-			beast::http::async_write_header (socket, *serializer,
-											 asio::bind_executor (
-												 strand,
-												 std::bind (&ClientSession::sendChunk,
-															shared_from_this (),
-															header,
-															resp,
-															std::placeholders::_1,
-															std::placeholders::_2)
-											 ));
-		}
-
-		void chunkHeaderCallback (std::uint64_t size,         // Size of the chunk, or zero for the last chunk
-								  beast::string_view extensions,     // The raw chunk-extensions string. Already validated.
-								  boost::system::error_code& ev) {
-			beast::http::chunk_extensions ce;
-
-			std::cout << "chunkHeaderCallback" << std::endl;
-			std::cout << extensions << std::endl;
-
-			// Parse the chunk extensions so we can access them easily
-			ce.parse (extensions, ev);
-			if (ev)
-				return;
-
-			// See if the chunk is too big
-			if (size > (std::numeric_limits<std::size_t>::max)())
-			{
-				ev = beast::http::error::body_limit;
-				return;
-			}
-		}
-
-		std::size_t chunkBodyCallback (std::uint64_t remain,   // The number of bytes left in this chunk
-									   beast::string_view body,       // A buffer holding chunk body data
-									   boost::system::error_code& ec) {
-			std::cout << "chunkBodyCallback" << std::endl;
-
-			// If this is the last piece of the chunk body,
-			// set the error so that the call to `read` returns
-			// and we can process the chunk.
-			if (remain == body.size ()) {
-				ec = beast::http::error::end_of_chunk;
-			}
-
-			// Append this piece to our container
-			std::cout << body.data () << std::endl;
-
-			asio::async_write (socket,
-							   beast::http::make_chunk (asio::const_buffer (body.data (), body.size ())),
-							   asio::bind_executor (
-								   strand,
-								   [](boost::system::error_code ec, size_t bytes_transferred) {
-									   if (ec) {
-										   // TODO: stop sending chunks?
-										   return;
-									   }
-								   }
-			));
-
-
-			// The return value informs the parser of how much of the body we
-			// consumed. We will indicate that we consumed everything passed in.
-			return body.size ();
-		}
-
-		void sendChunk (Ref<HttpResponseHeaderParser> header,
-						Ref<HttpResponseHeader> response,
-						boost::system::error_code ec,
-						std::size_t bytes_transferred) {
-			if (header->is_done ()) {
-				asio::async_write (socket,
-								   beast::http::make_chunk_last (),
-								   asio::bind_executor (
-									   strand,
-									   [](boost::system::error_code ec, size_t bytes_transferred) {
-										   if (ec) {
-											   // TODO: stop sending chunks?
-											   return;
-										   }
-									   }
-				));
-				return;
-			}
-
-			remoteAsyncRead
-				beast::http::async_read (remoteSocket, remoteBuffer, *header,
-										 asio::bind_executor (
-											 strand,
-											 [](boost::system::error_code ec, std::size_t bytes_tranferred) {
-												 if (ec) {
-													 // TODO:
-												 }
-											 }
-			));
-
-			if (!ec) {
-
-			}
-			else if (ec != beast::http::error::end_of_chunk) {
-				return;
-			}
-			else {
-				ec = {};
-	}
-
-}
-#endif
-		void handleRemoteResponse (Ref<ResponseParser> response,
-								   boost::system::error_code ec,
-								   std::size_t bytes_tranferred);
-
-		void handleWrite (Ref<Response> response,
-						  boost::system::error_code ec,
-						  std::size_t bytes_transferred);
+		void forwardChunkHeader (Ref<ResponseHeader> header);
+		template<typename T>
+		void forwardChunkBody (const T & chunk);
 
 	private:
 		beast::flat_buffer buffer;
