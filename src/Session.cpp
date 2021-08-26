@@ -110,28 +110,41 @@ namespace proxy {
 
 		if (header->chunked ()) {
 			std::cout << "chunked response" << std::endl;
-			//header->on_chunk_header (
-			//	std::bind (&ClientSession::chunkHeaderCallback,
-			//			   this,
-			//			   std::placeholders::_1,
-			//			   std::placeholders::_2,
-			//			   std::placeholders::_3
-			//	));
-			//header->on_chunk_body (
-			//	std::bind (&ClientSession::chunkBodyCallback,
-			//			   this,
-			//			   std::placeholders::_1,
-			//			   std::placeholders::_2,
-			//			   std::placeholders::_3
-			//	));
 
-			//startSendChunk (header);
+			header->on_chunk_header (std::bind (&RemoteSession::onChunkHeader,
+												shared_from_this (),
+												std::placeholders::_1,
+												std::placeholders::_2,
+												std::placeholders::_3));
+
+			header->on_chunk_body (std::bind (&RemoteSession::onChunkBody,
+											  shared_from_this (),
+											  std::placeholders::_1,
+											  std::placeholders::_2,
+											  std::placeholders::_3));
+
+			// before reading chunk, give another handle header
+			// now for send it back to client
+			if (headerHandler) {
+				headerHandler (header, [=]() {
+					readChunk (header);
+							   });
+			}
+			else {
+				readChunk (header);
+			}
+
 		}
 		else {
 			std::cout << "normal response" << std::endl;
 			Ref<ResponseParser> response = createRef<ResponseParser> (std::move (*header));
 			response->body_limit (std::numeric_limits<std::uint64_t>::max ());
 
+			// TODO:
+			// headerhandler + bodyHandler
+			// or full response handler
+			// responseHandler
+			// 
 			// receive remote http response
 			beast::http::async_read (socket, buffer, *response,
 									 asio::bind_executor (
@@ -139,10 +152,84 @@ namespace proxy {
 										 [=] (boost::system::error_code ec,
 											  std::size_t bytes_tranferred)
 										 {
-											 responseHandler (response, ec, bytes_tranferred);
+											 if (responseHandler)
+												 responseHandler (response, ec, bytes_tranferred);
 										 }
 			));
 		}
+	}
+
+	void RemoteSession::onChunkHeader (std::uint64_t size,
+									   beast::string_view extensions,
+									   boost::system::error_code& ev) {
+		LOG_FUNCTION_DEBUG;
+
+		// chunk extensions is optional parameter
+		// don't process now 
+
+		beast::http::chunk_extensions ce;
+
+		// Parse the chunk extensions so we can access them easily
+		ce.parse (extensions, ev);
+		if (ev)
+			return;
+
+		if (chunkHeaderHandler) chunkHeaderHandler (size, extensions);
+
+		// See if the chunk is too big
+		if (size > (std::numeric_limits<std::size_t>::max)())
+		{
+			ev = beast::http::error::body_limit;
+			return;
+		}
+	}
+
+	std::size_t RemoteSession::onChunkBody (std::uint64_t remain,
+											beast::string_view body,
+											boost::system::error_code& ec) {
+		LOG_FUNCTION_DEBUG;
+
+		// If this is the last piece of the chunk body,
+		// set the error so that the call to `read` returns
+		// and we can process the chunk.
+		if (remain == body.size ()) {
+			ec = beast::http::error::end_of_chunk;
+		}
+
+		if (chunkBodyHandler) chunkBodyHandler (remain, body);
+
+		// The return value informs the parser of how much of the body we
+		// consumed. We will indicate that we consumed everything passed in.
+		return body.size ();
+	}
+
+	void RemoteSession::readChunk (Ref<ResponseHeaderParser> header) {
+		LOG_FUNCTION_DEBUG;
+
+		beast::http::async_read (socket, buffer, *header,
+								 asio::bind_executor (
+									 strand,
+									 std::bind (&RemoteSession::handleChunkResponse,
+												shared_from_this (),
+												header,
+												std::placeholders::_1,
+												std::placeholders::_2)
+								 ));
+	}
+
+	void RemoteSession::handleChunkResponse (Ref<ResponseHeaderParser> header,
+											 boost::system::error_code ec, std::size_t bytes_tranferred) {
+		LOG_FUNCTION_DEBUG;
+
+		if (ec != beast::http::error::end_of_chunk) {
+			std::cout << "end of chunk" << std::endl;
+			return;
+		}
+		else {
+			logBoostError (ec);
+		}
+
+		readChunk (header);
 	}
 
 
@@ -241,127 +328,25 @@ namespace proxy {
 												std::placeholders::_1,
 												std::placeholders::_2,
 												std::placeholders::_3));
+		session->setHeaderHandler (std::bind (&ClientSession::headerHandler,
+											  shared_from_this (),
+											  std::placeholders::_1,
+											  std::placeholders::_2));
+		session->setChunkHeaderHandler (std::bind (&ClientSession::chunkHeaderHandler,
+												   shared_from_this (),
+												   std::placeholders::_1,
+												   std::placeholders::_2));
+		session->setChunkBodyHandler (std::bind (&ClientSession::chunkBodyHandler,
+												 shared_from_this (),
+												 std::placeholders::_1,
+												 std::placeholders::_2));
+
 		session->sendAsyncRequest (remoteRequest);
 	}
 
-
-#if 0
-	Ref<beast::http::response_serializer<beast::http::empty_body>> serializer;
-	void startSendChunk (Ref<HttpResponseHeaderParser> header) {
-		resp = createRef<HttpResponseHeader> (header->get ());
-		serializer = createRef<beast::http::response_serializer<beast::http::empty_body>> (*resp);
-
-		beast::http::async_write_header (socket, *serializer,
-										 asio::bind_executor (
-											 strand,
-											 std::bind (&ClientSession::sendChunk,
-														shared_from_this (),
-														header,
-														resp,
-														std::placeholders::_1,
-														std::placeholders::_2)
-										 ));
-	}
-
-	void chunkHeaderCallback (std::uint64_t size,         // Size of the chunk, or zero for the last chunk
-							  beast::string_view extensions,     // The raw chunk-extensions string. Already validated.
-							  boost::system::error_code& ev) {
-		beast::http::chunk_extensions ce;
-
-		std::cout << "chunkHeaderCallback" << std::endl;
-		std::cout << extensions << std::endl;
-
-		// Parse the chunk extensions so we can access them easily
-		ce.parse (extensions, ev);
-		if (ev)
-			return;
-
-		// See if the chunk is too big
-		if (size > (std::numeric_limits<std::size_t>::max)())
-		{
-			ev = beast::http::error::body_limit;
-			return;
-		}
-	}
-
-	std::size_t chunkBodyCallback (std::uint64_t remain,   // The number of bytes left in this chunk
-								   beast::string_view body,       // A buffer holding chunk body data
-								   boost::system::error_code& ec) {
-		std::cout << "chunkBodyCallback" << std::endl;
-
-		// If this is the last piece of the chunk body,
-		// set the error so that the call to `read` returns
-		// and we can process the chunk.
-		if (remain == body.size ()) {
-			ec = beast::http::error::end_of_chunk;
-		}
-
-		// Append this piece to our container
-		std::cout << body.data () << std::endl;
-
-		asio::async_write (socket,
-						   beast::http::make_chunk (asio::const_buffer (body.data (), body.size ())),
-						   asio::bind_executor (
-							   strand,
-							   [](boost::system::error_code ec, size_t bytes_transferred) {
-								   if (ec) {
-									   // TODO: stop sending chunks?
-									   return;
-								   }
-							   }
-		));
-
-
-		// The return value informs the parser of how much of the body we
-		// consumed. We will indicate that we consumed everything passed in.
-		return body.size ();
-	}
-
-	void sendChunk (Ref<HttpResponseHeaderParser> header,
-					Ref<HttpResponseHeader> response,
-					boost::system::error_code ec,
-					std::size_t bytes_transferred) {
-		if (header->is_done ()) {
-			asio::async_write (socket,
-							   beast::http::make_chunk_last (),
-							   asio::bind_executor (
-								   strand,
-								   [](boost::system::error_code ec, size_t bytes_transferred) {
-									   if (ec) {
-										   // TODO: stop sending chunks?
-										   return;
-									   }
-								   }
-			));
-			return;
-		}
-
-		remoteAsyncRead
-			beast::http::async_read (remoteSocket, remoteBuffer, *header,
-									 asio::bind_executor (
-										 strand,
-										 [](boost::system::error_code ec, std::size_t bytes_tranferred) {
-											 if (ec) {
-												 // TODO:
-											 }
-										 }
-		));
-
-		if (!ec) {
-
-		}
-		else if (ec != beast::http::error::end_of_chunk) {
-			return;
-		}
-		else {
-			ec = {};
-		}
-
-	}
-#endif
 	void ClientSession::forwardRemoteResponse (Ref<ResponseParser> response,
-											  boost::system::error_code ec,
-											  std::size_t bytes_tranferred) {
+											   boost::system::error_code ec,
+											   std::size_t bytes_tranferred) {
 		LOG_FUNCTION_DEBUG;
 
 		// получаем ответ от сервера и перенаправляем обратно клиенту
@@ -394,29 +379,59 @@ namespace proxy {
 		}
 	}
 
-	void ClientSession::forwardChunkHeader (Ref<ResponseHeader> header) {
+	void ClientSession::headerHandler (Ref<ResponseHeaderParser> header,
+									   std::function<void ()> callback) {
+		LOG_FUNCTION_DEBUG;
+
+		forwardHeader (createRef<ResponseHeader> (header->get ()),
+					   [&](boost::system::error_code, size_t) {
+						   callback ();
+					   });
+	}
+
+	void ClientSession::chunkHeaderHandler (std::uint64_t size, beast::string_view extensions) {
+		LOG_FUNCTION_DEBUG;
+
+
+	}
+
+	void ClientSession::chunkBodyHandler (std::uint64_t remain, beast::string_view body) {
+		LOG_FUNCTION_DEBUG;
+
+		if (remain == body.size ()) {
+			// end of chunk
+			forwardChunkBody (beast::http::make_chunk_last ());
+		}
+
+		forwardChunkBody (beast::http::make_chunk (asio::const_buffer (body.data (), body.size ())));
+	}
+
+	void ClientSession::forwardHeader (Ref<ResponseHeader> header,
+									   std::function<void (boost::system::error_code, size_t)> handler) {
+		LOG_FUNCTION_DEBUG;
+
 		beast::http::response_serializer <beast::http::empty_body> serializer (*header);
 
 		beast::http::async_write_header (socket, serializer,
 										 asio::bind_executor (
 											 strand,
-											 [](boost::system::error_code ec, size_t bytes_transferred) {
-												 if (ec) {
-													 // TODO: stop sending chunks?
-													 return;
-												 }
+											 [=](boost::system::error_code ec, size_t bytes_transferred) {
+												 handler (ec, bytes_transferred);
 											 }
 										 ));
 	}
 
 	template<typename T>
-	void ClientSession::forwardChunkBody (const T & chunk) {
+	void ClientSession::forwardChunkBody (const T& chunk) {
+		LOG_FUNCTION_DEBUG;
+
 		asio::async_write (socket,
 						   chunk,
 						   asio::bind_executor (
 							   strand,
 							   [](boost::system::error_code ec, size_t bytes_transferred) {
 								   if (ec) {
+									   logBoostError (ec);
 									   // TODO: stop sending chunks?
 									   return;
 								   }

@@ -123,9 +123,24 @@ namespace proxy {
 		void sendAsyncRequest (Ref<Request> request);
 		void setResponseHandler (std::function<void (Ref<ResponseParser>,
 													 boost::system::error_code,
-													 std::size_t)> responseHandler) {
+													 std::size_t)> handler) {
 			LOG_FUNCTION_DEBUG;
-			this->responseHandler = responseHandler;
+			this->responseHandler = handler;
+		}
+
+		void setHeaderHandler (std::function<void (Ref<ResponseHeaderParser>, std::function<void ()>)> handler) {
+			LOG_FUNCTION_DEBUG;
+			this->headerHandler = handler;
+		}
+
+		void setChunkHeaderHandler (std::function<void (std::uint64_t, beast::string_view)> handler) {
+			LOG_FUNCTION_DEBUG;
+			this->chunkHeaderHandler = handler;
+		}
+
+		void setChunkBodyHandler (std::function<void (std::uint64_t, beast::string_view)> handler) {
+			LOG_FUNCTION_DEBUG;
+			this->chunkBodyHandler = handler;
 		}
 
 	private:
@@ -134,8 +149,17 @@ namespace proxy {
 		void readHeader (Ref<Request> request, boost::system::error_code ec, std::size_t bytes_tranferred);
 		void handleHeaderResponse (Ref<ResponseHeaderParser> header, boost::system::error_code ec);
 
+		void onChunkHeader (std::uint64_t size, beast::string_view extensions, boost::system::error_code& ev);
+		std::size_t onChunkBody (std::uint64_t remain, beast::string_view body, boost::system::error_code& ec);
+
+		void readChunk (Ref<ResponseHeaderParser> header);
+		void handleChunkResponse (Ref<ResponseHeaderParser> header, boost::system::error_code ec, std::size_t bytes_tranferred);
+	
 	private:
 		std::function<void (Ref<ResponseParser>, boost::system::error_code, std::size_t)> responseHandler;
+		std::function<void (Ref<ResponseHeaderParser>, std::function<void()>)> headerHandler;
+		std::function<void (std::uint64_t, beast::string_view)> chunkHeaderHandler;
+		std::function<void (std::uint64_t, beast::string_view)> chunkBodyHandler;
 
 		std::string address;
 		uint16_t port;
@@ -172,10 +196,16 @@ namespace proxy {
 
 		void acceptRequest ();
 		void handleRequest (Ref<RequestParser> request, boost::system::error_code ec);
+		// maybe need remade to another handler
 		void forwardRemoteResponse (Ref<ResponseParser> response, boost::system::error_code ec, std::size_t bytes_tranferred);
 		void handleWrite (Ref<Response> response, boost::system::error_code ec, std::size_t bytes_transferred);
 
-		void forwardChunkHeader (Ref<ResponseHeader> header);
+
+		void headerHandler (Ref<ResponseHeaderParser> header, std::function<void()> callback);
+		void chunkHeaderHandler (std::uint64_t size, beast::string_view extensions);
+		void chunkBodyHandler (std::uint64_t remain, beast::string_view body);
+
+		void forwardHeader (Ref<ResponseHeader> header, std::function<void (boost::system::error_code, size_t)> handler);
 		template<typename T>
 		void forwardChunkBody (const T & chunk);
 
