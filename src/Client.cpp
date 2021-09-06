@@ -1,0 +1,95 @@
+﻿#include "Client.h"
+
+namespace proxy {
+
+	std::pair<std::string, uint16_t> Client::extractAddressPort (beast::string_view host) {
+		// TODO: check correct host port types
+		// that port is number
+		if (auto delim = host.find (':'); delim != beast::string_view::npos) {
+			return std::make_pair<std::string, uint16_t> (
+				std::string (host.substr (0, delim)), std::strtol (std::string (host.substr (delim + 1)).c_str (), nullptr, 10));
+		}
+
+		return std::make_pair<std::string, uint16_t> (std::string (host), 80);
+	}
+
+
+	void Client::acceptRequest () {
+		LOG_FUNCTION_DEBUG;
+
+		Ref<RequestParser> request = createRef<RequestParser> ();
+		request->header_limit (std::numeric_limits<std::uint32_t>::max ());
+		request->body_limit (std::numeric_limits<std::uint64_t>::max ());
+
+		// read client request
+		beast::http::async_read (socket, buffer, *request,
+								 asio::bind_executor (
+									 strand,
+									 std::bind (
+										 &Client::handleRequest,
+										 shared_from_this (),
+										 request,
+										 std::placeholders::_1)
+								 ));
+	}
+
+	void Client::handleRequest (Ref<RequestParser> request, boost::system::error_code ec) {
+		LOG_FUNCTION_DEBUG;
+
+		if (ec && !socket.is_open ()) {
+			logBoostError (ec);
+			return;
+		}
+
+		// тут парсим запрос и перенаправляем на целевой сервер
+		// нужно посмотреть в каком виде приходит запрос отправленный через прокси
+		//auto url = request->get ().target ();
+		//auto method = request->get ().method ();
+		//auto methodString = request->get ().method_string ();
+
+		//for (auto& element : message) {
+		//	std::cout << element.value () << std::endl;
+		//}
+
+		//request = createRef<HttpRequest> ();
+		//request->version (11);
+		//request->method (beast::http::verb::get);
+		//request->target ("qweqweq");
+		//request->set (beast::http::field::host, "google.com");
+		//request->set (beast::http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+
+		// один пользователь может иметь множество подключений 
+		// если в заголовке возвращается keep-alive то данное подключение разрывает либо
+		// удаленный сервер либо прокси по истечении времени
+		// 
+		// поиск удаленного подключения временно производится по хосту и порту
+
+		auto& message = request.get ()->get ();
+		beast::string_view host = message[beast::http::field::host];
+		if (host.empty ()) {
+			// return error;
+		}
+
+		auto [remoteHost, remotePort] = extractAddressPort (host);
+
+
+		Ref<Request> remoteRequest = createRef<Request> (request->get ());
+
+
+	}
+
+	
+
+	void Client::handleWrite (Ref<Response> clientResponse,
+									 boost::system::error_code ec,
+									 std::size_t bytes_transferred) {
+		LOG_FUNCTION_DEBUG;
+
+		if (ec) {
+			logBoostError (ec);
+			return;
+		}
+	}
+
+	
+}

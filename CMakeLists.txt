@@ -7,6 +7,10 @@ set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 set (CMAKE_EXTENSIONS OFF)
 
+if (WIN32) 
+	add_definitions(-D_WIN32_WINNT=0x0601)
+endif ()
+
 if (MSVC)
 	set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")
 	
@@ -100,9 +104,14 @@ include_directories (${INCLUDES})
 include_directories (${CMAKE_CURRENT_SOURCE_DIR})
 
 set (SRC_FILES 
+	src/Proxy.h
 	src/main.cpp
-	src/Session.h
-	src/Session.cpp
+	src/Server.h
+	src/Server.cpp
+	src/Client.h
+	src/Client.cpp
+	src/Remote.h
+	src/Remote.cpp
 )
 
 
