@@ -112,6 +112,8 @@ set (SRC_FILES
 	src/Client.cpp
 	src/Remote.h
 	src/Remote.cpp
+	src/IoContext.h
+	src/IoContext.cpp
 )
 
 

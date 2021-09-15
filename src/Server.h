@@ -1,10 +1,13 @@
 ﻿#pragma once
 
 #include "Proxy.h"
+#include "IoContext.h"
 #include "Client.h"
 
 namespace proxy {
 	class Server : public std::enable_shared_from_this<Server> {
+	public:
+		static Server& create (const tcp::endpoint& ep);
 
 	public:
 		Server (const tcp::endpoint& ep) :
@@ -17,41 +20,17 @@ namespace proxy {
 		~Server () = default;
 
 	public:
-		void run () {
-			// TODO: error code or exception
-			acceptor.open (endpoint.protocol ());
-			acceptor.bind (endpoint);
-			acceptor.listen (asio::socket_base::max_listen_connections);
-
-			acceptConnection (createSession ());
-		}
+		void run ();
 
 	private:
-		Ref<Client> createSession () {
-			// TODO: session storage
-			return createRef<Client> ();
-		}
+		Ref<Client> createSession ();
 
-		void acceptConnection (Ref<Client> session) {
-			acceptor.async_accept (session->getSocket (),
-								   std::bind (&Server::handleConnection, this, session, std::placeholders::_1));
-		}
+		void acceptConnection (Ref<Client> session);
 
-		void handleConnection (Ref<Client> session, boost::system::error_code ec) {
-			if (ec) {
-				// TODO:
-				std::cout << ec.message () << std::endl;
-				return;
-			}
-
-			session->start ();
-			sessions.emplace_back (session);
-
-			acceptConnection (createSession ());
-		}
+		void handleConnection (Ref<Client> session, boost::system::error_code ec);
 
 	private:
-		std::vector<Ref<Client>> sessions;
+		Ref<Client> sessions;
 
 		asio::io_context& ioc;
 		tcp::acceptor acceptor;

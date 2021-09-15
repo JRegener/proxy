@@ -1,6 +1,78 @@
 ﻿#include "Client.h"
 
 namespace proxy {
+	void Client::start () {
+		LOG_FUNCTION_DEBUG;
+		acceptRequest ();
+	}
+
+	void Client::sendHeaderResponseAsync (Ref<ResponseHeaderParser> header) {
+		LOG_FUNCTION_DEBUG;
+
+		Ref<beast::http::response_serializer <beast::http::empty_body>> serializer
+			= createRef<beast::http::response_serializer <beast::http::empty_body>> (header->get ());
+		beast::http::async_write_header (socket,
+										 *serializer,
+										 asio::bind_executor (
+											 strand,
+											 std::bind (
+												 &Client::handleWrite<beast::http::response_serializer <beast::http::empty_body>>,
+												 shared_from_this (),
+												 serializer,
+												 std::placeholders::_1,
+												 std::placeholders::_2)
+										 ));
+	}
+
+	void Client::sendChunkAsync (boost::string_view body) {
+		LOG_FUNCTION_DEBUG;
+
+
+		auto handler = [](boost::system::error_code ec, std::size_t bytes_transferred) {
+			if (ec) {
+				logBoostError (ec);
+				return;
+			}
+		};
+
+		asio::async_write (socket, beast::http::make_chunk (asio::const_buffer (body.data (), body.size ())),
+						   asio::bind_executor (
+							   strand, handler
+						   ));
+	}
+
+	void Client::sendChunkLastAsync () {
+		LOG_FUNCTION_DEBUG;
+
+
+		auto handler = [](boost::system::error_code ec, std::size_t bytes_transferred) {
+			if (ec) {
+				logBoostError (ec);
+				return;
+			}
+		};
+
+		// end of chunk
+		asio::async_write (socket, beast::http::make_chunk_last (),
+						   asio::bind_executor (
+							   strand, handler
+						   ));
+	}
+
+	void Client::sendResponseAsync (Ref<Response> response) {
+		LOG_FUNCTION_DEBUG;
+
+		beast::http::async_write (socket, *response,
+								  asio::bind_executor (
+									  strand,
+									  std::bind (
+										  &Client::handleWrite<Response>,
+										  shared_from_this (),
+										  response,
+										  std::placeholders::_1,
+										  std::placeholders::_2)
+								  ));
+	}
 
 	std::pair<std::string, uint16_t> Client::extractAddressPort (beast::string_view host) {
 		// TODO: check correct host port types
@@ -64,7 +136,7 @@ namespace proxy {
 		// 
 		// поиск удаленного подключения временно производится по хосту и порту
 
-		auto& message = request.get ()->get ();
+		auto& message = request->get ();
 		beast::string_view host = message[beast::http::field::host];
 		if (host.empty ()) {
 			// return error;
@@ -73,16 +145,18 @@ namespace proxy {
 		auto [remoteHost, remotePort] = extractAddressPort (host);
 
 
-		Ref<Request> remoteRequest = createRef<Request> (request->get ());
+		Ref<Remote> remoteSession = createRef<Remote> (shared_from_this (), remoteHost, remotePort);
+		remoteSession->sendAsyncRequest (createRef<Request> (request->get ()));
+		remoteSessions = remoteSession;
 
-
+		acceptRequest ();
 	}
 
-	
 
-	void Client::handleWrite (Ref<Response> clientResponse,
-									 boost::system::error_code ec,
-									 std::size_t bytes_transferred) {
+	template<typename T>
+	void Client::handleWrite (Ref<T> response,
+							  boost::system::error_code ec,
+							  std::size_t bytes_transferred) {
 		LOG_FUNCTION_DEBUG;
 
 		if (ec) {
@@ -91,5 +165,5 @@ namespace proxy {
 		}
 	}
 
-	
+
 }

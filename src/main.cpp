@@ -12,10 +12,11 @@ int main (int argc, char** argv) {
 	if (hostAddress == "localhost") {
 		hostAddress = "127.0.0.1";
 	}
+	
+	asio::executor_work_guard fakeWork = asio::make_work_guard (ioContext ());
 
-	Ref<Server> server =
-		createRef<Server> (tcp::endpoint (asio::ip::address_v4::from_string (hostAddress), hostPort));
-	server->run ();
+	Server & server = Server::create(tcp::endpoint (asio::ip::address_v4::from_string (hostAddress), hostPort));
+	server.run ();
 
 	ioContext ().run ();
 

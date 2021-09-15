@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <iostream>
 #include <functional>
+#include <future>
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
 
@@ -32,11 +33,6 @@ namespace proxy {
 
 	using RequestHeaderParser = beast::http::request_parser<beast::http::empty_body>;
 	using ResponseHeaderParser = beast::http::response_parser<beast::http::empty_body>;
-
-	static asio::io_context& ioContext () {
-		static asio::io_context ioc;
-		return ioc;
-	}
 
 	static void logBoostError (const boost::system::error_code& ec) {
 		std::cout << "Boost error:" << std::endl;
