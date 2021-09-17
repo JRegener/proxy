@@ -6,86 +6,6 @@ namespace proxy {
 		acceptRequest ();
 	}
 
-	void Client::sendHeaderResponseAsync (Ref<ResponseHeaderParser> header) {
-		LOG_FUNCTION_DEBUG;
-
-		Ref<beast::http::response_serializer <beast::http::empty_body>> serializer
-			= createRef<beast::http::response_serializer <beast::http::empty_body>> (header->get ());
-		beast::http::async_write_header (socket,
-										 *serializer,
-										 asio::bind_executor (
-											 strand,
-											 std::bind (
-												 &Client::handleWrite<beast::http::response_serializer <beast::http::empty_body>>,
-												 shared_from_this (),
-												 serializer,
-												 std::placeholders::_1,
-												 std::placeholders::_2)
-										 ));
-	}
-
-	void Client::sendChunkAsync (boost::string_view body) {
-		LOG_FUNCTION_DEBUG;
-
-
-		auto handler = [](boost::system::error_code ec, std::size_t bytes_transferred) {
-			if (ec) {
-				logBoostError (ec);
-				return;
-			}
-		};
-
-		asio::async_write (socket, beast::http::make_chunk (asio::const_buffer (body.data (), body.size ())),
-						   asio::bind_executor (
-							   strand, handler
-						   ));
-	}
-
-	void Client::sendChunkLastAsync () {
-		LOG_FUNCTION_DEBUG;
-
-
-		auto handler = [](boost::system::error_code ec, std::size_t bytes_transferred) {
-			if (ec) {
-				logBoostError (ec);
-				return;
-			}
-		};
-
-		// end of chunk
-		asio::async_write (socket, beast::http::make_chunk_last (),
-						   asio::bind_executor (
-							   strand, handler
-						   ));
-	}
-
-	void Client::sendResponseAsync (Ref<Response> response) {
-		LOG_FUNCTION_DEBUG;
-
-		beast::http::async_write (socket, *response,
-								  asio::bind_executor (
-									  strand,
-									  std::bind (
-										  &Client::handleWrite<Response>,
-										  shared_from_this (),
-										  response,
-										  std::placeholders::_1,
-										  std::placeholders::_2)
-								  ));
-	}
-
-	std::pair<std::string, uint16_t> Client::extractAddressPort (beast::string_view host) {
-		// TODO: check correct host port types
-		// that port is number
-		if (auto delim = host.find (':'); delim != beast::string_view::npos) {
-			return std::make_pair<std::string, uint16_t> (
-				std::string (host.substr (0, delim)), std::strtol (std::string (host.substr (delim + 1)).c_str (), nullptr, 10));
-		}
-
-		return std::make_pair<std::string, uint16_t> (std::string (host), 80);
-	}
-
-
 	void Client::acceptRequest () {
 		LOG_FUNCTION_DEBUG;
 
@@ -153,6 +73,106 @@ namespace proxy {
 	}
 
 
+
+	void Client::sendHeaderResponseAsync (Ref<ResponseHeader> header) {
+		LOG_FUNCTION_DEBUG;
+
+		Ref<ResponseHeaderSerializer> responseSerializer =
+			createRef<ResponseHeaderSerializer> (*header);
+
+#if 1
+		beast::http::async_write_header (socket,
+										 *responseSerializer,
+										 asio::bind_executor (
+											 strand,
+											 std::bind (
+												 &Client::handleWriteHeader,
+												 shared_from_this (),
+												 header,
+												 responseSerializer,
+												 std::placeholders::_1,
+												 std::placeholders::_2)
+										 ));
+#else
+		boost::system::error_code ec;
+		beast::http::write_header (socket, *responseHeader, ec);
+#endif
+	}
+
+	void Client::sendChunkAsync (boost::string_view body) {
+		LOG_FUNCTION_DEBUG;
+
+
+#if 0
+		auto handler = [](boost::system::error_code ec, std::size_t bytes_transferred) {
+			if (ec) {
+				logBoostError (ec);
+				return;
+			}
+		};
+
+		asio::async_write (socket, beast::http::make_chunk (asio::const_buffer (body.data (), body.size ())),
+						   asio::bind_executor (
+							   strand, handler
+						   ));
+#else
+		boost::system::error_code ec;
+		asio::write (socket, beast::http::make_chunk (asio::const_buffer (body.data (), body.size ())), ec);
+
+#endif
+	}
+
+	void Client::sendChunkLastAsync () {
+		LOG_FUNCTION_DEBUG;
+
+#if 0
+		auto handler = [](boost::system::error_code ec, std::size_t bytes_transferred) {
+			if (ec) {
+				logBoostError (ec);
+				return;
+			}
+		};
+
+		// end of chunk
+		asio::async_write (socket, beast::http::make_chunk_last (),
+						   asio::bind_executor (
+							   strand, handler
+						   ));
+#else
+		boost::system::error_code ec;
+		asio::write (socket, beast::http::make_chunk_last (), ec);
+#endif
+	}
+
+	void Client::sendResponseAsync (Ref<Response> response) {
+		LOG_FUNCTION_DEBUG;
+
+		beast::http::async_write (socket, *response,
+								  asio::bind_executor (
+									  strand,
+									  std::bind (
+										  &Client::handleWrite<Response>,
+										  shared_from_this (),
+										  response,
+										  std::placeholders::_1,
+										  std::placeholders::_2)
+								  ));
+	}
+
+	std::pair<std::string, uint16_t> Client::extractAddressPort (beast::string_view host) {
+		// TODO: check correct host port types
+		// that port is number
+		if (auto delim = host.find (':'); delim != beast::string_view::npos) {
+			return std::make_pair<std::string, uint16_t> (
+				std::string (host.substr (0, delim)), std::strtol (std::string (host.substr (delim + 1)).c_str (), nullptr, 10));
+		}
+
+		return std::make_pair<std::string, uint16_t> (std::string (host), 80);
+	}
+
+
+
+
 	template<typename T>
 	void Client::handleWrite (Ref<T> response,
 							  boost::system::error_code ec,
@@ -166,4 +186,13 @@ namespace proxy {
 	}
 
 
+	void Client::handleWriteHeader (Ref<ResponseHeader> responseHeader, Ref<ResponseHeaderSerializer> serializer, boost::system::error_code ec, std::size_t bytes_transferred)
+	{
+		LOG_FUNCTION_DEBUG;
+
+		if (ec) {
+			logBoostError (ec);
+			return;
+		}
+	}
 }

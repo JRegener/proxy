@@ -7,6 +7,8 @@ namespace proxy {
 	}
 
 	void Server::run () {
+		LOG_FUNCTION_DEBUG;
+
 		// TODO: error code or exception
 		acceptor.open (endpoint.protocol ());
 		acceptor.bind (endpoint);
@@ -16,19 +18,22 @@ namespace proxy {
 	}
 
 	Ref<Client> Server::createSession () {
-		// TODO: session storage
 		return createRef<Client> ();
 	}
 
 	void Server::acceptConnection (Ref<Client> session) {
+		LOG_FUNCTION_DEBUG;
+
 		acceptor.async_accept (session->getSocket (),
 							   std::bind (&Server::handleConnection, this, session, std::placeholders::_1));
 	}
 
 	void Server::handleConnection (Ref<Client> session, boost::system::error_code ec) {
+		LOG_FUNCTION_DEBUG;
+
 		if (ec) {
 			// TODO:
-			std::cout << ec.message () << std::endl;
+			logBoostError (ec);
 			return;
 		}
 

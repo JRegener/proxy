@@ -110,16 +110,13 @@ namespace proxy {
 			return;
 		}
 
-		Ref<ResponseHeaderParser> respHeader = createRef<ResponseHeaderParser> (header->get ());
-		
 		if (header->chunked ()) {
 			std::cout << "chunked response" << std::endl;
 
 			// а вообще имеет смысл ждать подтверждения того, что header был отправлен?
-			client->sendHeaderResponseAsync (respHeader);
+			client->sendHeaderResponseAsync (createRef<ResponseHeader> (header->get ()));
 
-			readChunk (respHeader);
-
+			startReadChunk (header);
 		}
 		else {
 			std::cout << "normal response" << std::endl;
@@ -159,63 +156,44 @@ namespace proxy {
 
 
 
-	void Remote::readChunk (Ref<ResponseHeaderParser> header) {
+	void Remote::startReadChunk (Ref<ResponseHeaderParser> header) {
 		LOG_FUNCTION_DEBUG;
-		std::string cch;
+
 		Ref<std::string> chunk = createRef<std::string> ();
 
-		header->on_chunk_header ([](std::uint64_t size, boost::string_view extensions,
-									boost::system::error_code& ec) {
-										LOG_FUNCTION_DEBUG;
+		header->on_chunk_header (std::bind (&Remote::onChunkHeader,
+											shared_from_this (),
+											chunk,
+											std::placeholders::_1,
+											std::placeholders::_2,
+											std::placeholders::_3));
 
-										//ce.parse (extensions, ev);
-										if (ec)
-											return;
+		header->on_chunk_body (std::bind (&Remote::onChunkBody,
+										  shared_from_this (),
+										  chunk,
+										  std::placeholders::_1,
+										  std::placeholders::_2,
+										  std::placeholders::_3));
 
-										// See if the chunk is too big
-										if (size > (std::numeric_limits<std::size_t>::max)()) {
-											ec = beast::http::error::body_limit;
-											return;
-										}
-										//self->prepareChunk (size);
-										// Make sure we have enough storage, and
-										// reset the container for the upcoming chunk
-										//chunk->reserve (static_cast<std::size_t>(size));
-										//chunk->clear ();
+		readChunk (chunk, header);
+	}
 
-										//cch.reserve (static_cast<std::size_t>(size));
-										//cch.clear ();
-								 });
+	void Remote::readChunk (Ref<std::string> chunk, Ref<ResponseHeaderParser> header) {
+		LOG_FUNCTION_DEBUG;
 
-		header->on_chunk_body ([](std::uint64_t remain, boost::string_view body,
-								  boost::system::error_code& ec) {
-									  LOG_FUNCTION_DEBUG;
-									  // If this is the last piece of the chunk body,
-									  // set the error so that the call to `read` returns
-									  // and we can process the chunk.
-									  if (remain == body.size ())
-										  ec = beast::http::error::end_of_chunk;
+#if 0
+		beast::http::async_read (socket, buffer, *header,
+								 asio::bind_executor (
+									 strand,
+									 std::bind (&Remote::handleReadChunk,
+												shared_from_this (),
+												header,
+												chunk,
+												std::placeholders::_1,
+												std::placeholders::_2)
+								 ));
 
-									  // Append this piece to our container
-									  //chunk->append (body.data (), body.size ());
-
-									  // The return value informs the parser of how much of the body we
-									  // consumed. We will indicate that we consumed everything passed in.
-									  return body.size ();
-							   });
-
-		//beast::http::async_read (socket, buffer, *header,
-		//						 asio::bind_executor (
-		//							 strand,
-		//							 std::bind (&Remote::handleReadChunk,
-		//										shared_from_this (),
-		//										header,
-		//										chunk,
-		//										std::placeholders::_1,
-		//										std::placeholders::_2)
-		//						 ));
-
-
+#else
 		while (!header->is_done ())
 		{
 			std::cout << "while" << std::endl;
@@ -223,14 +201,20 @@ namespace proxy {
 			// body callback will make the read return with the end_of_chunk error.
 			boost::system::error_code ec;
 			beast::http::read (socket, buffer, *header, ec);
-			if (!ec)
+			if (!ec) {
 				continue;
-			else if (ec != beast::http::error::end_of_chunk)
+			}
+			else if (ec != beast::http::error::end_of_chunk) {
+				logBoostError (ec);
 				return;
-			else
+			}
+			else {
 				ec = {};
+				client->sendChunkAsync (*chunk);
+			}
 		}
-		int a = 0;
+		client->sendChunkLastAsync ();
+#endif
 	}
 
 	void Remote::handleReadChunk (Ref<ResponseHeaderParser> header, Ref<std::string> chunk,
@@ -238,25 +222,24 @@ namespace proxy {
 		LOG_FUNCTION_DEBUG;
 
 		if (!header->is_done ()) {
-			if (ec != beast::http::error::end_of_chunk) {
-				std::cout << "errrr" << std::endl;
+			if (!ec) {
+				client->sendChunkAsync (*chunk);
+				readChunk (chunk, header);
+			}
+			else if (ec != beast::http::error::end_of_chunk) {
+				logBoostError (ec);
 				return;
 			}
 			else {
-				logBoostError (ec);
+				
 			}
-
-			// send chunk to client
-			client->sendChunkAsync (*chunk);
-
-			readChunk (header);
-			return;
 		}
-
-		client->sendChunkLastAsync ();
+		else {
+			client->sendChunkLastAsync ();
+		}
 	}
 
-	void Remote::onChunkHeader (std::uint64_t size, boost::string_view extensions,
+	void Remote::onChunkHeader (Ref<std::string> chunk, std::uint64_t size, boost::string_view extensions,
 								boost::system::error_code& ec) {
 		LOG_FUNCTION_DEBUG;
 
@@ -272,11 +255,11 @@ namespace proxy {
 
 		// Make sure we have enough storage, and
 		// reset the container for the upcoming chunk
-		//chunk.reserve (static_cast<std::size_t>(size));
-		//chunk.clear ();
+		chunk->reserve (static_cast<std::size_t>(size));
+		chunk->clear ();
 	}
 
-	size_t Remote::onChunkBody (std::uint64_t remain, boost::string_view body,
+	size_t Remote::onChunkBody (Ref<std::string> chunk, std::uint64_t remain, boost::string_view body,
 								boost::system::error_code& ec) {
 		LOG_FUNCTION_DEBUG;
 		// If this is the last piece of the chunk body,
@@ -285,14 +268,8 @@ namespace proxy {
 		if (remain == body.size ())
 			ec = beast::http::error::end_of_chunk;
 
-		//std::cout << body << std::endl;
-		// TODO: to storage 
-		//client.sendChunkAsync (ec, body);
-
-		//if (ec) client.sendChunkAsync (remain, body, true);
-
 		// Append this piece to our container
-		//chunk.append (body.data (), body.size ());
+		chunk->append (body.data (), body.size ());
 
 		// The return value informs the parser of how much of the body we
 		// consumed. We will indicate that we consumed everything passed in.

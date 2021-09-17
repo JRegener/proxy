@@ -22,7 +22,7 @@ namespace proxy {
 
 		void start ();
 
-		void sendHeaderResponseAsync (Ref<ResponseHeaderParser> header);
+		void sendHeaderResponseAsync (Ref<ResponseHeader> header);
 		void sendChunkAsync (boost::string_view body);
 		void sendChunkLastAsync ();
 
@@ -36,6 +36,8 @@ namespace proxy {
 		
 		template<typename T>
 		void handleWrite (Ref<T> response, boost::system::error_code ec, std::size_t bytes_transferred);
+		
+		void handleWriteHeader (Ref<ResponseHeader> responseHeader, Ref<ResponseHeaderSerializer> serializer, boost::system::error_code ec, std::size_t bytes_transferred);
 
 	private:
 		beast::flat_buffer buffer;

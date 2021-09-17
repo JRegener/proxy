@@ -11,7 +11,6 @@ namespace proxy {
 
 	public:
 		Server (const tcp::endpoint& ep) :
-			ioc (ioContext ()),
 			endpoint (ep),
 			acceptor (ioContext ()),
 			socket (ioContext ())
@@ -32,7 +31,6 @@ namespace proxy {
 	private:
 		Ref<Client> sessions;
 
-		asio::io_context& ioc;
 		tcp::acceptor acceptor;
 		tcp::endpoint endpoint;
 		tcp::socket socket;

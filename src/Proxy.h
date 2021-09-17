@@ -32,7 +32,13 @@ namespace proxy {
 	using ResponseParser = beast::http::response_parser<beast::http::string_body>;
 
 	using RequestHeaderParser = beast::http::request_parser<beast::http::empty_body>;
-	using ResponseHeaderParser = beast::http::response_parser<beast::http::empty_body>;
+	using ResponseHeaderParser = beast::http::response_parser<beast::http::empty_body>;	
+	
+	using RequestSerializer = beast::http::request_serializer <beast::http::string_body>;
+	using ResponseSerializer = beast::http::response_serializer <beast::http::string_body>;
+
+	using RequestHeaderSerializer = beast::http::request_serializer <beast::http::empty_body>;
+	using ResponseHeaderSerializer = beast::http::response_serializer <beast::http::empty_body>;
 
 	static void logBoostError (const boost::system::error_code& ec) {
 		std::cout << "Boost error:" << std::endl;
