@@ -3,6 +3,7 @@
 #include "Proxy.h"
 #include "Remote.h"
 #include "IoContext.h"
+#include "ConnectionStorage.h"
 
 
 namespace proxy {
@@ -19,6 +20,11 @@ namespace proxy {
 
 	public:
 		tcp::socket& getSocket () { return socket; }
+		ConnectionId getConnectionId () const { return socket.remote_endpoint ().address ().to_v4 ().to_uint (); };
+		
+		asio::ip::address & getAddress () const  { return socket.remote_endpoint ().address (); }
+		uint16_t getPort () const { return socket.remote_endpoint ().port (); }
+
 
 		void start ();
 
@@ -44,6 +50,6 @@ namespace proxy {
 		tcp::socket socket;
 		asio::strand<asio::io_context::executor_type> strand;
 
-		Ref<Remote> remoteSessions;
+		ConnectionStorage<Remote> storage;
 	};
 }

@@ -67,6 +67,8 @@ namespace proxy {
 			return;
 		}
 
+		storage.add (shared_from_this ());
+
 		sendAsyncRequest (request);
 	}
 
@@ -114,7 +116,7 @@ namespace proxy {
 			std::cout << "chunked response" << std::endl;
 
 			// а вообще имеет смысл ждать подтверждения того, что header был отправлен?
-			client->sendHeaderResponseAsync (createRef<ResponseHeader> (header->get ()));
+			client.sendHeaderResponseAsync (createRef<ResponseHeader> (header->get ()));
 
 			startReadChunk (header);
 		}
@@ -151,7 +153,7 @@ namespace proxy {
 		}
 
 		// send back to client
-		client->sendResponseAsync (createRef<Response> (response->get ()));
+		client.sendResponseAsync (createRef<Response> (response->get ()));
 	}
 
 
@@ -210,10 +212,10 @@ namespace proxy {
 			}
 			else {
 				ec = {};
-				client->sendChunkAsync (*chunk);
+				client.sendChunkAsync (*chunk);
 			}
 		}
-		client->sendChunkLastAsync ();
+		client.sendChunkLastAsync ();
 #endif
 	}
 
@@ -223,7 +225,7 @@ namespace proxy {
 
 		if (!header->is_done ()) {
 			if (!ec) {
-				client->sendChunkAsync (*chunk);
+				client.sendChunkAsync (*chunk);
 				readChunk (chunk, header);
 			}
 			else if (ec != beast::http::error::end_of_chunk) {
@@ -235,7 +237,7 @@ namespace proxy {
 			}
 		}
 		else {
-			client->sendChunkLastAsync ();
+			client.sendChunkLastAsync ();
 		}
 	}
 

@@ -3,13 +3,14 @@
 #include "Proxy.h"
 #include "Client.h"
 #include "IoContext.h"
+#include "ConnectionStorage.h"
 
 namespace proxy {
 	class Client;
 
 	class Remote : public std::enable_shared_from_this<Remote> {
 	public:
-		Remote (Ref<Client> client, const std::string& address, uint16_t port) :
+		Remote (Client & client, const std::string& address, uint16_t port) :
 			strand (asio::make_strand (ioContext ())),
 			resolver (ioContext ()),
 			socket (ioContext ()),
@@ -25,6 +26,12 @@ namespace proxy {
 		}
 
 	public:
+		tcp::socket& getSocket () { return socket; }
+		ConnectionId getConnectionId () const  { return socket.remote_endpoint ().address ().to_v4 ().to_uint (); };
+
+		asio::ip::address& getAddress () const { return socket.remote_endpoint ().address (); }
+		uint16_t getPort () const { return socket.remote_endpoint ().port (); }
+		
 		void sendAsyncRequest (Ref<Request> request);
 
 	private:
@@ -45,7 +52,8 @@ namespace proxy {
 		void prepareChunk (size_t size);
 		void accumulateChunk (beast::string_view body);
 	private:
-		Ref<Client> client;
+		Client& client;
+		ConnectionStorage<Remote> & storage;
 
 		std::string address;
 		uint16_t port;

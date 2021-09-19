@@ -103,7 +103,7 @@ namespace proxy {
 		LOG_FUNCTION_DEBUG;
 
 
-#if 0
+#if 1
 		auto handler = [](boost::system::error_code ec, std::size_t bytes_transferred) {
 			if (ec) {
 				logBoostError (ec);
@@ -125,7 +125,7 @@ namespace proxy {
 	void Client::sendChunkLastAsync () {
 		LOG_FUNCTION_DEBUG;
 
-#if 0
+#if 1
 		auto handler = [](boost::system::error_code ec, std::size_t bytes_transferred) {
 			if (ec) {
 				logBoostError (ec);

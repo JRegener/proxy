@@ -1,7 +1,9 @@
 ﻿#pragma once
 #include <iostream>
 #include <functional>
-#include <future>
+#include <unordered_map>
+#include <map>
+
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
 
@@ -39,6 +41,8 @@ namespace proxy {
 
 	using RequestHeaderSerializer = beast::http::request_serializer <beast::http::empty_body>;
 	using ResponseHeaderSerializer = beast::http::response_serializer <beast::http::empty_body>;
+
+	using ConnectionId = uint_least32_t;
 
 	static void logBoostError (const boost::system::error_code& ec) {
 		std::cout << "Boost error:" << std::endl;

@@ -106,14 +106,16 @@ include_directories (${CMAKE_CURRENT_SOURCE_DIR})
 set (SRC_FILES 
 	src/Proxy.h
 	src/main.cpp
+	src/IoContext.h
+	src/IoContext.cpp
 	src/Server.h
 	src/Server.cpp
 	src/Client.h
 	src/Client.cpp
 	src/Remote.h
 	src/Remote.cpp
-	src/IoContext.h
-	src/IoContext.cpp
+	src/ConnectionStorage.h
+	src/ConnectionStorage.cpp
 )
 
 

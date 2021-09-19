@@ -3,6 +3,7 @@
 #include "Proxy.h"
 #include "IoContext.h"
 #include "Client.h"
+#include "ConnectionStorage.h"
 
 namespace proxy {
 	class Server : public std::enable_shared_from_this<Server> {
@@ -24,12 +25,12 @@ namespace proxy {
 	private:
 		Ref<Client> createSession ();
 
-		void acceptConnection (Ref<Client> session);
+		void acceptConnection (Ref<Client> connection);
 
-		void handleConnection (Ref<Client> session, boost::system::error_code ec);
+		void handleConnection (Ref<Client> connection, boost::system::error_code ec);
 
 	private:
-		Ref<Client> sessions;
+		ConnectionStorage<Client> connectionsStorage;
 
 		tcp::acceptor acceptor;
 		tcp::endpoint endpoint;

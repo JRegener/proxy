@@ -21,14 +21,14 @@ namespace proxy {
 		return createRef<Client> ();
 	}
 
-	void Server::acceptConnection (Ref<Client> session) {
+	void Server::acceptConnection (Ref<Client> connection) {
 		LOG_FUNCTION_DEBUG;
 
-		acceptor.async_accept (session->getSocket (),
-							   std::bind (&Server::handleConnection, this, session, std::placeholders::_1));
+		acceptor.async_accept (connection->getSocket (),
+							   std::bind (&Server::handleConnection, this, connection, std::placeholders::_1));
 	}
 
-	void Server::handleConnection (Ref<Client> session, boost::system::error_code ec) {
+	void Server::handleConnection (Ref<Client> connection, boost::system::error_code ec) {
 		LOG_FUNCTION_DEBUG;
 
 		if (ec) {
@@ -37,8 +37,14 @@ namespace proxy {
 			return;
 		}
 
-		session->start ();
-		sessions = session;
+
+		// TODO: check is ip_v6 can connect to ip_v4 server ?
+		if (connectionsStorage.add (connection)) {
+			connection->start ();
+		}
+		else {
+			std::cout << "Session " << connection->getConnectionId () << " already exist" << std::endl;
+		}
 
 		acceptConnection (createSession ());
 	}
