@@ -2,11 +2,12 @@
 
 namespace proxy {
 
-	void Remote::sendAsyncRequest (Ref<Request> request) {
+	void Remote::sendAsyncRequest (Ref<RequestParser> requestParser) {
 		LOG_FUNCTION_DEBUG;
 
-		if (socket.is_open ()) {
-			beast::http::async_write (socket, *request,
+		if (socket.isOpen ()) {
+			Ref<Request> request = createRef<Request> (requestParser->get ());
+			beast::http::async_write (socket.getSocket (), *request,
 									  asio::bind_executor (
 										  strand,
 										  std::bind (&Remote::handleWrite,
@@ -22,7 +23,7 @@ namespace proxy {
 										strand,
 										std::bind (&Remote::handleResolve,
 												   shared_from_this (),
-												   request,
+												   requestParser,
 												   std::placeholders::_1,
 												   std::placeholders::_2)
 									));
@@ -39,7 +40,7 @@ namespace proxy {
 	{
 	}
 
-	void Remote::handleResolve (Ref<Request> request,
+	void Remote::handleResolve (Ref<RequestParser> requestParser,
 								boost::system::error_code ec,
 								tcp::resolver::results_type result) {
 		LOG_FUNCTION_DEBUG;
@@ -49,16 +50,16 @@ namespace proxy {
 			return;
 		}
 
-		asio::async_connect (socket, result.begin (), result.end (),
+		asio::async_connect (socket.getSocket (), result.begin (), result.end (),
 							 asio::bind_executor (
 								 strand,
 								 std::bind (&Remote::handleConnect,
 											shared_from_this (),
-											request,
+											requestParser,
 											std::placeholders::_1)));
 	}
 
-	void Remote::handleConnect (Ref<Request> request,
+	void Remote::handleConnect (Ref<RequestParser> requestParser,
 								const boost::system::error_code& ec) {
 		LOG_FUNCTION_DEBUG;
 
@@ -66,10 +67,13 @@ namespace proxy {
 			logBoostError (ec);
 			return;
 		}
-
+		
 		storage.add (shared_from_this ());
+		if (requestParser->get ().version () == 11) {
+			socket.start ();
+		}
 
-		sendAsyncRequest (request);
+		sendAsyncRequest (requestParser);
 	}
 
 	void Remote::handleWrite (Ref<Request> request,
@@ -91,7 +95,7 @@ namespace proxy {
 		Ref<ResponseHeaderParser> header = createRef<ResponseHeaderParser> ();
 		header->header_limit (std::numeric_limits<std::uint32_t>::max ());
 
-		beast::http::async_read_header (socket, buffer, *header,
+		beast::http::async_read_header (socket.getSocket (), buffer, *header,
 										asio::bind_executor (
 											strand,
 											std::bind (&Remote::handleReadHeader,
@@ -110,6 +114,14 @@ namespace proxy {
 		if (ec) {
 			logBoostError (ec);
 			return;
+		}
+
+		// check is http version 1.0 and check keep-alive 
+		// if http is 1.1 start time out
+		if (header->get ().version () == 10) {
+			if (header->get ().keep_alive ()) {
+				socket.start ();
+			}
 		}
 
 		if (header->chunked ()) {
@@ -133,7 +145,7 @@ namespace proxy {
 			// receive remote http response
 
 			// read full body
-			beast::http::async_read (socket, buffer, *response,
+			beast::http::async_read (socket.getSocket (), buffer, *response,
 									 asio::bind_executor (
 										 strand,
 										 std::bind (&Remote::handleReadBody,
@@ -202,7 +214,7 @@ namespace proxy {
 			// Read as much as we can. When we reach the end of the chunk, the chunk
 			// body callback will make the read return with the end_of_chunk error.
 			boost::system::error_code ec;
-			beast::http::read (socket, buffer, *header, ec);
+			beast::http::read (socket.getSocket (), buffer, *header, ec);
 			if (!ec) {
 				continue;
 			}

@@ -4,6 +4,7 @@
 #include "Remote.h"
 #include "IoContext.h"
 #include "ConnectionStorage.h"
+#include "Socket.h"
 
 
 namespace proxy {
@@ -13,17 +14,17 @@ namespace proxy {
 	public:
 		Client () :
 			strand (asio::make_strand (ioContext ())),
-			socket (ioContext ())
+			socket (TCP_TIMEOUT_DEFAULT)
 		{}
 
 		~Client () = default;
 
 	public:
-		tcp::socket& getSocket () { return socket; }
-		ConnectionId getConnectionId () const { return socket.remote_endpoint ().address ().to_v4 ().to_uint (); };
+		inline tcp::socket& getSocket () { return socket.getSocket (); }
+		ConnectionId getConnectionId () { return getSocket ().remote_endpoint ().address ().to_v4 ().to_uint (); };
 		
-		asio::ip::address & getAddress () const  { return socket.remote_endpoint ().address (); }
-		uint16_t getPort () const { return socket.remote_endpoint ().port (); }
+		asio::ip::address & getAddress () { return getSocket ().remote_endpoint ().address (); }
+		uint16_t getPort () { return getSocket ().remote_endpoint ().port (); }
 
 
 		void start ();
@@ -47,7 +48,7 @@ namespace proxy {
 
 	private:
 		beast::flat_buffer buffer;
-		tcp::socket socket;
+		Socket socket;
 		asio::strand<asio::io_context::executor_type> strand;
 
 		ConnectionStorage<Remote> storage;

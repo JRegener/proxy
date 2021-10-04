@@ -1,8 +1,11 @@
 ﻿#include "Client.h"
+#include "Utils.h"
 
 namespace proxy {
 	void Client::start () {
 		LOG_FUNCTION_DEBUG;
+
+		socket.start ();
 		acceptRequest ();
 	}
 
@@ -14,7 +17,7 @@ namespace proxy {
 		request->body_limit (std::numeric_limits<std::uint64_t>::max ());
 
 		// read client request
-		beast::http::async_read (socket, buffer, *request,
+		beast::http::async_read (socket.refresh (), buffer, *request,
 								 asio::bind_executor (
 									 strand,
 									 std::bind (
@@ -27,14 +30,16 @@ namespace proxy {
 
 	void Client::handleRequest (Ref<RequestParser> request, boost::system::error_code ec) {
 		LOG_FUNCTION_DEBUG;
-
-		if (ec && !socket.is_open ()) {
+		std::this_thread::sleep_for (std::chrono::seconds (20));
+		if (ec && !socket.isOpen ()) {
 			logBoostError (ec);
 			return;
 		}
 
-		// тут парсим запрос и перенаправляем на целевой сервер
-		// нужно посмотреть в каком виде приходит запрос отправленный через прокси
+#if _DEBUG
+		debug::Utils::printRequest (*request);
+#endif
+
 		//auto url = request->get ().target ();
 		//auto method = request->get ().method ();
 		//auto methodString = request->get ().method_string ();
@@ -50,11 +55,6 @@ namespace proxy {
 		//request->set (beast::http::field::host, "google.com");
 		//request->set (beast::http::field::user_agent, BOOST_BEAST_VERSION_STRING);
 
-		// один пользователь может иметь множество подключений 
-		// если в заголовке возвращается keep-alive то данное подключение разрывает либо
-		// удаленный сервер либо прокси по истечении времени
-		// 
-		// поиск удаленного подключения временно производится по хосту и порту
 
 		auto& message = request->get ();
 		beast::string_view host = message[beast::http::field::host];
@@ -65,9 +65,8 @@ namespace proxy {
 		auto [remoteHost, remotePort] = extractAddressPort (host);
 
 
-		Ref<Remote> remoteSession = createRef<Remote> (shared_from_this (), remoteHost, remotePort);
-		remoteSession->sendAsyncRequest (createRef<Request> (request->get ()));
-		remoteSessions = remoteSession;
+		Ref<Remote> remoteSession = createRef<Remote> (*this, remoteHost, remotePort, storage);
+		remoteSession->sendAsyncRequest (request);
 
 		acceptRequest ();
 	}
@@ -80,8 +79,7 @@ namespace proxy {
 		Ref<ResponseHeaderSerializer> responseSerializer =
 			createRef<ResponseHeaderSerializer> (*header);
 
-#if 1
-		beast::http::async_write_header (socket,
+		beast::http::async_write_header (socket.refresh (),
 										 *responseSerializer,
 										 asio::bind_executor (
 											 strand,
@@ -93,17 +91,11 @@ namespace proxy {
 												 std::placeholders::_1,
 												 std::placeholders::_2)
 										 ));
-#else
-		boost::system::error_code ec;
-		beast::http::write_header (socket, *responseHeader, ec);
-#endif
 	}
 
 	void Client::sendChunkAsync (boost::string_view body) {
 		LOG_FUNCTION_DEBUG;
 
-
-#if 1
 		auto handler = [](boost::system::error_code ec, std::size_t bytes_transferred) {
 			if (ec) {
 				logBoostError (ec);
@@ -111,21 +103,15 @@ namespace proxy {
 			}
 		};
 
-		asio::async_write (socket, beast::http::make_chunk (asio::const_buffer (body.data (), body.size ())),
+		asio::async_write (socket.refresh (), beast::http::make_chunk (asio::const_buffer (body.data (), body.size ())),
 						   asio::bind_executor (
 							   strand, handler
 						   ));
-#else
-		boost::system::error_code ec;
-		asio::write (socket, beast::http::make_chunk (asio::const_buffer (body.data (), body.size ())), ec);
-
-#endif
 	}
 
 	void Client::sendChunkLastAsync () {
 		LOG_FUNCTION_DEBUG;
 
-#if 1
 		auto handler = [](boost::system::error_code ec, std::size_t bytes_transferred) {
 			if (ec) {
 				logBoostError (ec);
@@ -134,20 +120,16 @@ namespace proxy {
 		};
 
 		// end of chunk
-		asio::async_write (socket, beast::http::make_chunk_last (),
+		asio::async_write (socket.refresh (), beast::http::make_chunk_last (),
 						   asio::bind_executor (
 							   strand, handler
 						   ));
-#else
-		boost::system::error_code ec;
-		asio::write (socket, beast::http::make_chunk_last (), ec);
-#endif
 	}
 
 	void Client::sendResponseAsync (Ref<Response> response) {
 		LOG_FUNCTION_DEBUG;
 
-		beast::http::async_write (socket, *response,
+		beast::http::async_write (socket.refresh (), *response,
 								  asio::bind_executor (
 									  strand,
 									  std::bind (
