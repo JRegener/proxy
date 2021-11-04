@@ -6,6 +6,7 @@
 
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
+#include <boost/exception/diagnostic_information.hpp>
 
 #pragma warning (disable: 4996 4083)
 
@@ -43,7 +44,7 @@ using ResponseSerializer = beast::http::response_serializer <beast::http::string
 using RequestHeaderSerializer = beast::http::request_serializer <beast::http::empty_body>;
 using ResponseHeaderSerializer = beast::http::response_serializer <beast::http::empty_body>;
 
-using ConnectionId = uint_least32_t;
+using HostKey = std::string;
 
 #define TCP_TIMEOUT_DEFAULT 15
 
@@ -54,11 +55,15 @@ static void logBoostError (const boost::system::error_code& ec) {
 	std::cout << "\tMessage: " << ec.message () << std::endl;
 }
 
+static void logBoostError (const std::string & info) {
+	std::cout << "Boost error:" << std::endl;
+	std::cout << info << std::endl;
+}
 
-enum class ErrorConnection {
-	none,
-	// TODO: TMP
-	error
+enum class Error {
+	None,
+	Unknown,
+	SocketClosed
 };
 
 

@@ -9,10 +9,17 @@ namespace proxy {
 	void Server::run () {
 		LOG_FUNCTION_DEBUG;
 
-		// TODO: error code or exception
-		acceptor.open (endpoint.protocol ());
-		acceptor.bind (endpoint);
-		acceptor.listen (asio::socket_base::max_listen_connections);
+		try {
+			acceptor.open (endpoint.protocol ());
+			acceptor.bind (endpoint);
+			acceptor.listen (asio::socket_base::max_listen_connections);
+		}
+		catch (const boost::exception& ex) {
+			logBoostError (boost::diagnostic_information (ex));
+
+			boost::system::error_code acc_err;
+			acceptor.close (acc_err);
+		}
 
 		acceptConnection (createSession ());
 	}
@@ -32,8 +39,8 @@ namespace proxy {
 		LOG_FUNCTION_DEBUG;
 
 		if (ec) {
-			// TODO:
 			logBoostError (ec);
+
 			return;
 		}
 
@@ -43,7 +50,7 @@ namespace proxy {
 			connection->start ();
 		}
 		else {
-			std::cout << "Session " << connection->getConnectionId () << " already exist" << std::endl;
+			std::cout << "Session " << connection->getHostKey () << " already exist" << std::endl;
 		}
 
 		acceptConnection (createSession ());

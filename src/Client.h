@@ -14,18 +14,18 @@ namespace proxy {
 	public:
 		Client () :
 			strand (asio::make_strand (ioContext ())),
-			socket (TCP_TIMEOUT_DEFAULT)
+			socket ()
 		{}
 
 		~Client () = default;
 
 	public:
 		inline tcp::socket& getSocket () { return socket.getSocket (); }
-		ConnectionId getConnectionId () { return getSocket ().remote_endpoint ().address ().to_v4 ().to_uint (); };
 		
 		asio::ip::address & getAddress () { return getSocket ().remote_endpoint ().address (); }
 		uint16_t getPort () { return getSocket ().remote_endpoint ().port (); }
 
+		HostKey getHostKey () { return getAddress ().to_string () + ':' + std::to_string (getPort ()); }
 
 		void start ();
 
@@ -51,6 +51,7 @@ namespace proxy {
 		Socket socket;
 		asio::strand<asio::io_context::executor_type> strand;
 
+		std::mutex storageLock;
 		ConnectionStorage<Remote> storage;
 	};
 }

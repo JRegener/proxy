@@ -19,34 +19,62 @@ void Socket::setTimeout (int64_t seconds) {
 	timeout.expires_from_now (boost::posix_time::seconds (seconds));
 }
 
-ErrorConnection Socket::close () {
+tcp::socket& Socket::use (Error & error) { 
 	LOG_FUNCTION_DEBUG;
 
-	boost::system::error_code ec;
-	socket.close (ec);
+	error = Error::None;
 
-	if (ec) {
-		logBoostError (ec);
-		return ErrorConnection::error;
+	if (!socket.is_open ()) {
+		// TODO return error code
+		error = Error::SocketClosed;
+		return socket;
 	}
 
-	return ErrorConnection::none;
+	stop ();
+	start (); 
+	return socket; 
+}
+
+boost::system::error_code Socket::close () {
+	LOG_FUNCTION_DEBUG;
+	
+	boost::system::error_code ec;
+	if (!socket.is_open ()) return ec;
+
+	socket.shutdown (asio::socket_base::shutdown_both, ec);
+	if (ec) return ec;
+
+	socket.close (ec);
+	return ec;
 }
 
 void Socket::handleTimeout (const boost::system::error_code& ec) {
 	LOG_FUNCTION_DEBUG;
 
+	std::cout << debugName << " ";
+
+	if (!socket.is_open ()) {
+		return;
+	}
+
 	if (!ec) {
-		ErrorConnection err = close ();
-		if (err != ErrorConnection::none) {
-			std::cout << "Error during closing connection" << std::endl;
+
+		boost::system::error_code err = close ();
+		if (err) {
+			std::cout << "Error during close connection" << std::endl;
+			logBoostError (err);
+			return;
 		}
-		std::cout << "Connection closed" << std::endl;
+
+		std::cout << "Connection success closed" << std::endl;
+		if (callback) callback ();
 
 		return;
 	}
 
-	logBoostError (ec);
+	if (ec != asio::error::operation_aborted) {
+		logBoostError (ec);
+	}
 }
 
 }

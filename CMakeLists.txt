@@ -118,6 +118,8 @@ set (SRC_FILES
 	src/ConnectionStorage.h
 	src/Socket.h
 	src/Socket.cpp
+	src/HttpError.h
+	src/HttpError.cpp
 )
 
 

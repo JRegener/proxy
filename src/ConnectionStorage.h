@@ -11,48 +11,40 @@ namespace proxy {
 		~ConnectionStorage () = default;
 
 		bool exist (const Ref<T>& connection) {
-			return storage.find (connection->getConnectionId ()) != storage.end ();
+			return storage.find (connection->getHostKey ()) != storage.end ();
 		}
-		bool exist (ConnectionId id) {
-			return storage.find (id) != storage.end ();
+		bool exist (HostKey key) {
+			return storage.find (key) != storage.end ();
 		}
 
 		bool add (Ref<T> connection) {
-			ConnectionId id = connection->getConnectionId ();
-			if (!exist (id)) {
-				storage[id] = connection;
+			HostKey key = connection->getHostKey ();
+			if (!exist (key)) {
+				storage[key] = connection;
 				return true;
 			}
 			return false;
 		}
-		bool remove (const Ref<T>& connection) {
-			ConnectionId id = connection->getConnectionId ();
-			if (exist (id)) {
-				storage.erase (id);
-				return true;
-			}
-			return false;
+		void remove (const Ref<T>& connection) {
+			HostKey key = connection->getHostKey ();
+			storage.erase (key);
 		}
-		bool remove (ConnectionId id) {
-			if (exist (id)) {
-				storage.erase (id);
-				return true;
-			}
-			return false;
+		void remove (HostKey key) {
+			storage.erase (key);
 		}
 		
 		Ref<T> get (const Ref<T>& connection) {
-			return exist (connection) ? storage[connection->getConnectionId ()] : nullptr;
+			return exist (connection) ? storage[connection->getHostKey ()] : nullptr;
 		}
-		Ref<T> get (ConnectionId id) {
-			return exist (id) ? storage[id] : nullptr;
+		Ref<T> get (HostKey key) {
+			return exist (key) ? storage[key] : nullptr;
 		}
 
-		typename std::unordered_map<ConnectionId, Ref<T>>::const_iterator const cbegin () { return storage.cbegin (); }
-		typename std::unordered_map<ConnectionId, Ref<T>>::const_iterator const cend () { return storage.cend (); }
+		typename std::map<HostKey, Ref<T>>::const_iterator const cbegin () { return storage.cbegin (); }
+		typename std::map<HostKey, Ref<T>>::const_iterator const cend () { return storage.cend (); }
 
 
 	private:
-		std::unordered_map<ConnectionId, Ref<T>> storage;
+		std::map<HostKey, Ref<T>> storage;
 	};
 }
