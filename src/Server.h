@@ -8,7 +8,7 @@
 namespace proxy {
 	class Server : public std::enable_shared_from_this<Server> {
 	public:
-		static Server& create (const tcp::endpoint& ep);
+		static Server& getInstance (const tcp::endpoint& ep);
 
 	public:
 		Server (const tcp::endpoint& ep) :
@@ -30,7 +30,9 @@ namespace proxy {
 		void handleConnection (Ref<Client> connection, boost::system::error_code ec);
 
 	private:
-		ConnectionStorage<Client> connectionsStorage;
+		std::mutex storageLock;
+		ConnectionStorage<Client> storage;
+
 
 		tcp::acceptor acceptor;
 		tcp::endpoint endpoint;

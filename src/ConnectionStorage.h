@@ -40,6 +40,13 @@ namespace proxy {
 			return exist (key) ? storage[key] : nullptr;
 		}
 
+		void clear () {
+			storage.clear ();
+		}
+
+		typename std::map<HostKey, Ref<T>>::iterator const begin () { return storage.begin (); }
+		typename std::map<HostKey, Ref<T>>::iterator const end () { return storage.end (); }
+
 		typename std::map<HostKey, Ref<T>>::const_iterator const cbegin () { return storage.cbegin (); }
 		typename std::map<HostKey, Ref<T>>::const_iterator const cend () { return storage.cend (); }
 

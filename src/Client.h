@@ -14,10 +14,13 @@ namespace proxy {
 	public:
 		Client () :
 			strand (asio::make_strand (ioContext ())),
-			socket ()
-		{}
+			socket (TCP_TIMEOUT_DEFAULT)
+		{ }
 
-		~Client () = default;
+		~Client () {
+			LOG_FUNCTION_DEBUG;
+			destroy ();
+		}
 
 	public:
 		inline tcp::socket& getSocket () { return socket.getSocket (); }
@@ -27,6 +30,9 @@ namespace proxy {
 
 		HostKey getHostKey () { return getAddress ().to_string () + ':' + std::to_string (getPort ()); }
 
+		void destroy ();
+
+		void setTimeoutCallback (const std::function<void()> & callback);
 		void start ();
 
 		void sendHeaderResponseAsync (Ref<ResponseHeader> header);
@@ -48,8 +54,8 @@ namespace proxy {
 
 	private:
 		beast::flat_buffer buffer;
-		Socket socket;
 		asio::strand<asio::io_context::executor_type> strand;
+		Socket socket;
 
 		std::mutex storageLock;
 		ConnectionStorage<Remote> storage;

@@ -3,8 +3,16 @@
 
 namespace proxy {
 
+void Socket::destroy () {
+	LOG_FUNCTION_DEBUG;
+
+	stop ();
+	close ();
+}
+
 void Socket::start () {
 	LOG_FUNCTION_DEBUG;
+	expires ();
 	timeout.async_wait (std::bind (&Socket::handleTimeout, this, std::placeholders::_1));
 }
 
@@ -15,11 +23,15 @@ void Socket::stop () {
 
 void Socket::setTimeout (int64_t seconds) {
 	LOG_FUNCTION_DEBUG;
+	this->seconds = seconds;
+}
 
+void Socket::expires () {
+	LOG_FUNCTION_DEBUG;
 	timeout.expires_from_now (boost::posix_time::seconds (seconds));
 }
 
-tcp::socket& Socket::use (Error & error) { 
+tcp::socket& Socket::use (Error& error) {
 	LOG_FUNCTION_DEBUG;
 
 	error = Error::None;
@@ -30,14 +42,14 @@ tcp::socket& Socket::use (Error & error) {
 		return socket;
 	}
 
-	stop ();
-	start (); 
-	return socket; 
+	expires ();
+	start ();
+	return socket;
 }
 
 boost::system::error_code Socket::close () {
 	LOG_FUNCTION_DEBUG;
-	
+
 	boost::system::error_code ec;
 	if (!socket.is_open ()) return ec;
 
@@ -51,30 +63,27 @@ boost::system::error_code Socket::close () {
 void Socket::handleTimeout (const boost::system::error_code& ec) {
 	LOG_FUNCTION_DEBUG;
 
-	std::cout << debugName << " ";
+	if (ec) {
+		if (asio::error::operation_aborted != ec)
+			logBoostError (ec);
+		return;
+	}
 
 	if (!socket.is_open ()) {
 		return;
 	}
 
-	if (!ec) {
+	std::cout << "Connection success closed" << std::endl;
+	if (callback) callback ();
 
-		boost::system::error_code err = close ();
-		if (err) {
-			std::cout << "Error during close connection" << std::endl;
-			logBoostError (err);
-			return;
-		}
-
-		std::cout << "Connection success closed" << std::endl;
-		if (callback) callback ();
-
+	boost::system::error_code err = close ();
+	if (err) {
+		std::cout << "Error during close connection" << std::endl;
+		logBoostError (err);
 		return;
 	}
 
-	if (ec != asio::error::operation_aborted) {
-		logBoostError (ec);
-	}
+	return;
 }
 
 }

@@ -1,7 +1,7 @@
 ﻿#include "Server.h"
 
 namespace proxy {
-	Server& Server::create (const tcp::endpoint& ep) {
+	Server& Server::getInstance (const tcp::endpoint& ep) {
 		static Server server (ep);
 		return server;
 	}
@@ -38,20 +38,23 @@ namespace proxy {
 	void Server::handleConnection (Ref<Client> connection, boost::system::error_code ec) {
 		LOG_FUNCTION_DEBUG;
 
-		if (ec) {
-			logBoostError (ec);
+		if (!ec) {
+			{
+				std::scoped_lock<std::mutex> lock (storageLock);
 
-			return;
+				connection->setTimeoutCallback ([this, connection]() {
+					LOG_FUNCTION_DEBUG;
+
+					std::scoped_lock<std::mutex> lock (storageLock);
+					storage.remove (connection);
+												});
+
+				storage.add (connection);
+				connection->start ();
+			}
 		}
 
-
-		// TODO: check is ip_v6 can connect to ip_v4 server ?
-		if (connectionsStorage.add (connection)) {
-			connection->start ();
-		}
-		else {
-			std::cout << "Session " << connection->getHostKey () << " already exist" << std::endl;
-		}
+		if (ec) logBoostError (ec);
 
 		acceptConnection (createSession ());
 	}

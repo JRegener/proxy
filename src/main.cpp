@@ -18,7 +18,7 @@ int main (int argc, char** argv) {
 	
 	asio::executor_work_guard fakeWork = asio::make_work_guard (ioContext ());
 
-	Server & server = Server::create(tcp::endpoint (asio::ip::address_v4::from_string (hostAddress), hostPort));
+	Server & server = Server::getInstance(tcp::endpoint (asio::ip::address_v4::from_string (hostAddress), hostPort));
 	server.run ();
 
 	ioContext ().run ();

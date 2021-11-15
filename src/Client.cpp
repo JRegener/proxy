@@ -3,10 +3,23 @@
 #include "HttpError.h"
 
 namespace proxy {
+
+void Client::destroy () {
+	socket.destroy ();
+
+	std::scoped_lock<std::mutex> lock (storageLock);
+	storage.clear ();
+}
+
+void Client::setTimeoutCallback (const std::function<void ()>& callback) {
+	socket.setCallback (callback);
+}
+
 void Client::start () {
 	LOG_FUNCTION_DEBUG;
 
 	socket.start ();	// start timeout timer
+
 	acceptRequest ();
 }
 
@@ -42,9 +55,14 @@ static HostKey createHostKey (const std::string& host, uint16_t port) {
 void Client::handleRequest (Ref<RequestParser> request, boost::system::error_code ec) {
 	LOG_FUNCTION_DEBUG;
 
+	std::cout << "READ CLIENT REQUEST" << std::endl;
+
 	if (ec) {
 		logBoostError (ec);
-		if (asio::error::eof == ec) {
+
+		
+		if (beast::http::error::end_of_stream == ec ||
+			asio::error::operation_aborted == ec) {
 			return;
 		}
 
@@ -54,6 +72,7 @@ void Client::handleRequest (Ref<RequestParser> request, boost::system::error_cod
 
 		return;
 	}
+
 
 #if _DEBUG
 	debug::Utils::printRequest (*request);

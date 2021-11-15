@@ -14,7 +14,7 @@ namespace proxy {
 		Remote (Client & client, const std::string& address, uint16_t port) :
 			strand (asio::make_strand (ioContext ())),
 			resolver (ioContext ()),
-			socket (TCP_TIMEOUT_DEFAULT, "remote socket"),
+			socket (TCP_TIMEOUT_DEFAULT),
 			address (address),
 			port (port),
 			client (client)
@@ -69,11 +69,5 @@ namespace proxy {
 		Socket socket;
 
 		asio::strand<asio::io_context::executor_type> strand;
-
-		std::string ch;
 	};
-
-
-
-
 }

@@ -11,7 +11,16 @@ public:
 
 	Socket () :
 		socket (ioContext ()),
-		timeout (ioContext ())
+		timeout (ioContext ()),
+		seconds (0)
+	{
+		LOG_FUNCTION_DEBUG;
+	}
+
+	Socket (int64_t seconds) : 
+		socket (ioContext ()),
+		timeout(ioContext ()),
+		seconds(seconds)
 	{
 		LOG_FUNCTION_DEBUG;
 	}
@@ -19,33 +28,25 @@ public:
 	~Socket () 
 	{
 		LOG_FUNCTION_DEBUG;
+		
+		destroy ();
 	}
 	
-	Socket (int64_t seconds) : 
-		socket (ioContext ()),
-		timeout(ioContext (), boost::posix_time::seconds (seconds))
-	{
-		LOG_FUNCTION_DEBUG;
-	}
 
-	Socket (int64_t seconds, const std::string& debugName) :
-		debugName (debugName),
-		socket (ioContext ()),
-		timeout (ioContext (), boost::posix_time::seconds (seconds))
-	{
-		LOG_FUNCTION_DEBUG;
-	}
 
 public:
+	bool isOpen () { return socket.is_open (); }	
+	tcp::socket& getSocket () { return socket; }
+
 	void start ();
 	void stop ();
+	void expires ();
+	void destroy ();
 	tcp::socket& use (Error & error);
+	
 	void setTimeout (int64_t seconds);
 	void setCallback (const std::function<void ()>& callback) { this->callback = callback; }
 
-	bool isOpen () { return socket.is_open (); }
-	
-	tcp::socket& getSocket () { return socket; }
 	boost::system::error_code close ();
 
 private:
@@ -56,7 +57,7 @@ private:
 	asio::deadline_timer timeout;
 	std::function<void ()> callback;
 
-	std::string debugName;
+	int64_t seconds;
 };
 
 }

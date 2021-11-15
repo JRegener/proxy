@@ -81,6 +81,8 @@ void Remote::setTimeoutCallback (const std::function<void ()>& callback) {
 void Remote::sendAsyncRequest (Ref<RequestParser> requestParser) {
 	LOG_FUNCTION_DEBUG;
 
+	std::cout << "SEND TO REMOTE SERVER" << std::endl;
+
 	if (socket.isOpen ()) {
 		Error error;
 		tcp::socket& sock = socket.use (error);
@@ -107,8 +109,11 @@ void Remote::handleWrite (Ref<Request> request,
 						  std::size_t bytes_tranferred) {
 	LOG_FUNCTION_DEBUG;
 
+	std::cout << "READ FROM REMOTE SERVER" << std::endl;
+
 	if (ec) {
 		logBoostError (ec);
+
 		client.sendResponseAsync (
 			createRef<Response>(
 				HttpError::createErrorResponse(ec, std::string_view(), request.operator*())));
@@ -151,6 +156,7 @@ void Remote::handleReadHeader (Ref<ResponseHeaderParser> header,
 		if (asio::error::operation_aborted == ec) {
 			return;
 		}
+
 		client.sendResponseAsync (
 			createRef<Response> (
 				HttpError::createErrorResponse (ec, std::string_view (), header->get ().version (), header->keep_alive ())));
@@ -210,7 +216,7 @@ void Remote::handleReadBody (Ref<ResponseParser> response, boost::system::error_
 		logBoostError (ec);
 		client.sendResponseAsync (
 			createRef<Response> (
-				HttpError::createErrorResponse (ec, std::string_view ("sasai"), response->get ().version (), response->keep_alive ())));
+				HttpError::createErrorResponse (ec, std::string_view (), response->get ().version (), response->keep_alive ())));
 		return;
 	}
 
